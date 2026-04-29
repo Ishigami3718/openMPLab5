@@ -4,17 +4,19 @@
 #include <iostream>
 #include <omp.h>
 
-#define NUM_THREADS 4 
+#define NUM_THREADS 32
 #define ROWS 10000
 #define COLS 100000
 using namespace std;
 
-long long* findMatrixSum(int*[]);
+long long findMatrixSum(int*[]);
 long long findSum(int*[], int);
 void initArr(int* []);
+long long* findMinRowSum(int* []);
 
 int main()
 {
+    omp_set_nested(1);
 	int** arr  = new int* [ROWS];
     initArr(arr);
     /*for (int i = 0; i < ROWS; i++) {
@@ -23,52 +25,74 @@ int main()
         }
         cout << endl;
     }*/
-    long long sum = 0;
+    /*long long sum = 0;
     double t1 = omp_get_wtime();
     for (int i = 0; i < ROWS; i++) {
         for (int j = 0; j < COLS; j++) {
 			sum += arr[i][j];
         }
     }
+
     cout << sum << endl;
     double t2 = omp_get_wtime();
-    cout << "time: " << t2 - t1 << endl;
-    t1 = omp_get_wtime();
-    long long* res = findMatrixSum(arr);
-    t2 = omp_get_wtime();
-    cout << "time: " << t2 - t1 << endl;
-	cout << "sum: " << res[0] << endl;
-    cout << "minsum: " << res[2] << "minsum row indx: "<<res[1] << endl;
+    cout << "time: " << t2 - t1 << endl;*/
+#pragma omp parallel sections
+    {
+#pragma omp section
+        {
+        double t1 = omp_get_wtime();
+        long long res = findMatrixSum(arr);
+        double t2 = omp_get_wtime();
+#pragma omp critical
+        {
+            cout << "time: " << t2 - t1 << endl;
+            cout << "sum: " << res << endl;
+        }
+        }
+#pragma omp section
+        {
+    double t1 = omp_get_wtime();
+    long long* minSumAndIndx = findMinRowSum(arr);
+    double t2 = omp_get_wtime();
+#pragma omp critical
+    {
+        cout << "time: " << t2 - t1 << endl;
+        cout << "min row sum: " << minSumAndIndx[1] << " at row: " << minSumAndIndx[0] << endl;
+    }
+    delete[] minSumAndIndx;
+        }
+    }
     delete[] arr;
-    delete[] res;
-
 }
 
-long long* findMatrixSum(int* arr[] ) {
-    omp_set_nested(1);
-    long long* res = new long long[3];
+long long findMatrixSum(int* arr[] ) 
+{
 	long long sum = 0;
-    int minRowSumIndx = 0;
-	long long minRowSum = LONG_MAX;
 #pragma omp parallel for reduction(+:sum) num_threads(NUM_THREADS)
     for (int i = 0; i < ROWS; i++) {
 		long long newSum = findSum(arr, i);
 		sum += newSum;
-        if (newSum < minRowSum) {
-#pragma omp critical
-            {
-                if (newSum < minRowSum) {
-                    minRowSum = sum;
-                    minRowSumIndx = i;
-                }
+    }
+    return sum;
+}
+
+long long* findMinRowSum(int* arr[]) {
+    long long* res = new long long[2];
+    res[0] = 0;
+    res[1] = LONG_MAX;
+#pragma omp parallel for num_threads(NUM_THREADS)
+    for (int i = 0; i < ROWS; i++) {
+        long long newSum = findSum(arr, i);
+        if(newSum < res[1])
+        #pragma omp critical
+        {
+            if (newSum < res[1]) {
+                res[0] = i;
+                res[1] = newSum;
             }
         }
     }
-#pragma omp barrier
-    res[0] = sum;
-	res[1] = minRowSumIndx;
-	res[2] = minRowSum;
-    return res;
+	return res;
 }
 
 long long findSum(int* arr[], int row) {
